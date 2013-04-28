@@ -60,7 +60,7 @@ on the Chrome browser.
 First, run lein deps and lein javac. This command starts the local
 shell service:
 
-    lein run -m typos.core 8080
+    lein run -m typos.core
 
 Then point your browser to http://localhost:8080, which will start a shell
 session.

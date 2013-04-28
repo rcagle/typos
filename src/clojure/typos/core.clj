@@ -3,7 +3,9 @@
 (ns typos.core
   (:require [clojure.data.json :as json]
             [clojure.string :as s]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [clojure.tools.cli :as cli]
+            [clojure.stacktrace :as st])
   (:import [com.sun.jna Structure]
            [org.apache.commons.codec.binary Base64]
            [org.webbitserver WebServer WebServers WebSocketHandler]
@@ -112,8 +114,14 @@
                  (.send c (json/json-str {:type "host_data" :message pty-input})))
                (.close c))))))
 
-(defn -main []
-  (doto (WebServers/createWebServer 8080)
+(defn show-help
+  [banner]
+  (println banner))
+
+(defn run-app
+  [port]
+  (printf "Typos listening on http://localhost:%d\n" port)
+  (doto (WebServers/createWebServer port)
     (.add "/websocket"
           (proxy [WebSocketHandler] []
             (onOpen [c]
@@ -132,3 +140,23 @@
               (on-message c j))))
     (.add (StaticFileHandler. "public"))
     (.start)))
+
+(defn parse-args
+  [args]
+  (cli/cli args
+           ["-p" "--port" "Listen on this port"
+            :parse-fn #(Integer. %) :default 8080]
+           ["-?" "--help" "Print help" :flag true :default false]))
+
+(defn -main
+  [& args]
+  (try
+    (let [[parsed _ banner] (parse-args args)
+          {:keys [port help]} parsed]
+      (if help
+        (show-help banner)
+        (run-app port)))
+    (catch Exception e
+      (let [[_ _ banner] (parse-args [])]
+        (println banner)
+        (st/print-cause-trace e)))))

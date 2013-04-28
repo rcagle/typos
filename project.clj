@@ -5,7 +5,8 @@
                  [org.clojure/data.json "0.1.2"]
                  [net.java.dev.jna/jna "3.4.0"]
                  [net.java.dev.jna/platform "3.4.0"]
-                 [commons-codec/commons-codec "1.7"]]
+                 [commons-codec/commons-codec "1.7"]
+                 [org.clojure/tools.cli "0.2.2"]]
   :source-paths ["src/clojure"]
   :java-source-paths ["src/java"])
 
