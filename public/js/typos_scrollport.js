@@ -88,10 +88,18 @@ typos.ScrollPort.prototype.decorate = function(div) {
 
   this.screen_.addEventListener('scroll', this.onScroll_.bind(this));
   this.screen_.addEventListener('mousewheel', this.onScrollWheel_.bind(this));
-  this.screen_.addEventListener('copy', this.onCopy_.bind(this));
   this.screen_.addEventListener('paste', this.onPaste_.bind(this));
   this.screen_.addEventListener('mousedown', this.onMouseDown_.bind(this));
 
+  // We send focus to this element just before a paste happens, so we can
+  // capture the pasted text and forward it on to someone who cares.
+  this.pasteTarget_ = doc.createElement('textarea');
+  this.pasteTarget_.setAttribute('tabindex', '-1');
+  this.pasteTarget_.style.cssText = (
+    'position: absolute;' +
+    'top: -999px;');
+
+  doc.body.appendChild(this.pasteTarget_);
   this.setSelectionEnabled(true);
   this.resize();
 };
