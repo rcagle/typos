@@ -5,7 +5,8 @@
             [clojure.string :as s]
             [clojure.java.io :as io]
             [clojure.tools.cli :as cli]
-            [clojure.stacktrace :as st])
+            [clojure.stacktrace :as st]
+            [typos.native :as native])
   (:import [com.sun.jna Structure]
            [org.apache.commons.codec.binary Base64]
            [org.webbitserver WebServer WebServers WebSocketHandler]
@@ -32,13 +33,8 @@
       (.setAccessible ctor true)
       (.newInstance ctor (to-array [(Integer. fd)])))))
 
-(defn make-lib [libname]
-  (let [lib (NativeLibrary/getInstance libname)]
-    (fn [fname rtype & args]
-      (.invoke (.getFunction lib fname) rtype (to-array args)))))
-
-(def clib (make-lib "c"))
-(def util (make-lib "util"))
+(def clib (native/make-lib "c"))
+(def typoslib (native/make-lib-from-resource "libtypos.so"))
 
 (defn stream-seq
   ([is]
@@ -52,26 +48,28 @@
            (cons (String. buffer 0 bytes-read "UTF8") (lazy-seq (stream-seq is buffer)))))
        (catch Exception e (println "ignoring" e)))))
 
-(defn open-pty [command args env]
+(defn open-pty
+  [command args env]
   (let [pty-ptr (int-array [-1])
-        env-and-defaults (merge (into {} (System/getenv)) env)
-        env-arr (into-array
-                 String
-                 (map (fn [kv] (let [[key value] kv] (str key "=" value)))
-                      env-and-defaults))
-        pid (util "forkpty" Integer pty-ptr nil nil nil)]
-    (if (= pid 0)
-      (do
-        (apply (partial clib "execle" Integer command)
-               (concat args [nil env-arr])))
-      (let [pty-fd (aget pty-ptr 0)
+        cmd-arr (into-array String (concat args [nil]))
+        env-strings (->> env
+                         (merge (into {} (System/getenv)))
+                         (map (fn [[key value]] (str key "=" value))))
+        env-arr (into-array String (concat env-strings [nil]))
+        pid (typoslib "my_fork" Integer pty-ptr command cmd-arr env-arr)]
+    (println "pid" pid)
+    (if (> pid 0)
+      (let [
+            pty-fd (aget pty-ptr 0)
             java-fd (to-java-fd pty-fd)
             pty-r (FileInputStream. java-fd)
             pty-w (OutputStreamWriter. (FileOutputStream. java-fd) "UTF8")]
         {:pty-fd pty-fd
+         :java-fd (to-java-fd pty-fd)
          :pty-r pty-r
          :pty-w pty-w
-         :pid pid}))))
+         :pid pid})
+      (throw (RuntimeException. "openpty failed")))))
 
 (defn resize [pty width height]
   (let [{:keys [pty-fd pid]} pty
@@ -118,6 +116,21 @@
   [banner]
   (println banner))
 
+(defn close-pty
+  [{:keys [pid pty-r pty-w]}]
+  (println "closing pty")
+  (try
+    (.append pty-w "\004")
+    (.flush pty-w)
+    (.close pty-r)
+    (.close pty-w)
+    (catch Throwable whoops
+      (println "caught" whoops)))
+  (try
+    (clib "kill" Integer pid SIGHUP)
+    (catch Throwable whoops
+      (println "caught" whoops))))
+
 (defn run-app
   [port]
   (printf "Typos listening on http://localhost:%d\n" port)
@@ -127,15 +140,8 @@
             (onOpen [c]
               (on-open c))
             (onClose [c]
-              (let [{:keys [pid pty-r pty-w]} (@connections c)]
-                (try
-                  (do
-                    (.append pty-w "\004")
-                    (.flush pty-w)
-                    (.close pty-r)
-                    (.close pty-w)
-                    (clib "kill" Integer pid SIGHUP)))
-                (swap! connections dissoc c)))
+              (close-pty (@connections c))
+              (swap! connections dissoc c))
             (onMessage [c j]
               (on-message c j))))
     (.add (StaticFileHandler. "public"))

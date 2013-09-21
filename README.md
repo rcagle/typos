@@ -57,8 +57,13 @@ authentication.
 Typos requires a Unix-like system to run, and has only been tested
 on the Chrome browser.
 
-First, run lein deps and lein javac. This command starts the local
-shell service:
+First, build the native code and Java classes:
+
+    make
+    lein javac
+
+Once those tasks have completed successfully, then this command will
+start the local shell service:
 
     lein run -m typos.core
 
