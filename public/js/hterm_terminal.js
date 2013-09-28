@@ -1925,7 +1925,10 @@ hterm.Terminal.prototype.setReverseWraparound = function(state) {
  */
 hterm.Terminal.prototype.setAlternateMode = function(state) {
   var cursor = this.saveCursor();
-  this.screen_ = state ? this.alternateScreen_ : this.primaryScreen_;
+  var oldScreen = this.screen_;
+  var newScreen = state ? this.alternateScreen_ : this.primaryScreen_;
+
+  this.screen_ = newScreen;
 
   if (this.screen_.rowsArray.length &&
       this.screen_.rowsArray[0].rowIndex != this.scrollbackRows_.length) {
@@ -1938,10 +1941,11 @@ hterm.Terminal.prototype.setAlternateMode = function(state) {
     }
   }
 
+  this.scrollPort_.removeVisibleRows();
   this.realizeWidth_(this.screenSize.width);
   this.realizeHeight_(this.screenSize.height);
   this.scrollPort_.syncScrollHeight();
-  this.scrollPort_.invalidate();
+  this.scrollPort_.redraw_();
 
   this.restoreCursor(cursor);
   this.scrollPort_.resize();

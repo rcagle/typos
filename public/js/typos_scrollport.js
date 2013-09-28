@@ -215,6 +215,19 @@ typos.ScrollPort.prototype.invalidate = function() {
   this.redraw_();
 };
 
+/**
+ * Divides invalidate into two phases. Fixes a bug with switching to
+ * the alternate screen. The remove visible rows phase happens first,
+ * the the Screen-object screen's width and height are realized, then
+ * ScrollPort.redraw_() is called. Otherwise, the alternate screen was
+ * getting added while the primary screen was still visible.
+ */
+typos.ScrollPort.prototype.removeVisibleRows = function() {
+  for (var i = 0; i < this.visibleRowCount; i++) {
+    var e = this.screen_.removeChild(this.screen_.lastChild);
+  }
+};
+
 typos.ScrollPort.prototype.scheduleInvalidate = function() {
 };
 
