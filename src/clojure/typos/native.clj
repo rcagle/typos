@@ -50,7 +50,6 @@
   [libname]
   (let [f (File/createTempFile libname ".so")
         specific-path (s/join "/" [(native-dir) libname])]
-    (println specific-path)
     (try
       (with-open [r (io/input-stream (io/resource specific-path))]
         (io/copy r f)
