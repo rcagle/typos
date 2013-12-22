@@ -1,0 +1,17 @@
+.cmd { box-shadow: none;
+/*       display: block; */
+       padding: 0;
+       width: 100%;
+/*
+-webkit-box-shadow: none;
+       -webkit-transition: none;
+       transition: none;
+       border-radius: 0;
+       -webkit-border-radius: 0;
+       outline-style: none;
+       outline-color: transparent;
+*/
+       border: 0; outline: none; resize: none; }
+
+.cmd:focus { box-shadow: none;
+}

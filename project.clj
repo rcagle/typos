@@ -1,12 +1,10 @@
-(defproject html-term "1.0.0-SNAPSHOT"
-  :description "A terminal emulator that can render embedded HTML."
+(defproject typos "0.0.0-SNAPSHOT"
+  :description "Graphical command-line interface hosted in the browser."
   :dependencies [[org.clojure/clojure "1.5.1"]
-                 [org.webbitserver/webbit "0.4.3"]
-                 [org.clojure/data.json "0.1.2"]
-                 [net.java.dev.jna/jna "3.4.0"]
-                 [net.java.dev.jna/platform "3.4.0"]
-                 [commons-codec/commons-codec "1.7"]
-                 [org.clojure/tools.cli "0.2.2"]]
-  :source-paths ["src/clojure"]
-  :java-source-paths ["src/java"])
-
+                 [ring/ring-core "1.2.1"]
+                 [ring/ring-jetty-adapter "1.2.1"]
+                 [cheshire "5.3.0"]
+                 [org.clojure/tools.logging "0.2.6"]
+                 [org.eclipse.jetty/jetty-websocket "7.6.8.v20121106"]]
+  :profiles
+  {:dev {:dependencies [[clj-http "0.6.4"]]}})

@@ -2,12 +2,6 @@
 //
 // Distributed under a BSD-style license found in the LICENSE file.
 
-'use strict';
-
-lib.rtdep('lib.f',
-          'hterm.msg',
-          'typos.CommandInstance');
-
 /**
  * @param {Object} argv The argument object passed in from the Terminal.
  */

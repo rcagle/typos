@@ -1,0 +1,207 @@
+
+DANGER: this is an inherently insecure prototype. Please do not use
+over a physical network until a version has been released that
+addresses an important architectural security flaw described in the
+Security section.
+
+Typos is an attempt to combine the good parts of terminal application
+development and web development into a graphical command line hosted
+in the browser.
+
+Instead of sending ASCII escape codes, controlling applications send
+messages to the browser. Browsers offer several advantages over
+terminal emulators for command-line developers:
+
+- typeset text
+- forms and widgets
+- client-side scripting
+- graphics
+
+Command-line applications are easier to develop and deploy than web
+applications:
+
+- before startup, your application already has secure, bidirectional
+  communication established with an authenticated user
+- you deploy your app to the filesystem
+  - does not require reverse proxying or the assignment of an
+    arbitrary port
+- works seamlessly over SSH
+
+Also, the command-line interaction style has unique benefits that are
+easy to duplicate in the browser's document-oriented runtime
+environment.
+
+* What this is not
+
+RDP or X. It specifically tries to replicate a command-line-like style
+of interaction, whereas graphical desktop protocols are for
+single-application, single-process windows.
+
+A terminal emulator. No attempt has been made to handle ASCII escape
+codes. Why use `^[1234;666;12m` when you can use
+`.foo {background-color: blue}`? Typos can host web-based terminal
+emulators, however.
+
+
+* Requirements
+
+Should run on most versions of Linux, OS X, and Windows. Requires Java 1.6 or higher.
+
+* How it works
+
+An intermediary service provides messages passing between the browser
+and host applications via WebSockets. This service runs as the current
+user, not a daemon, and executes processes on behalf of that user.
+
+Since most command-line applications expect stdin and stdout to be
+text streams, it is convenient to restore that behavior by
+default and pass messages over a different channel. This is the role
+that the Typos-stdio-multiplexer fills; it spawns a child, wraps its
+stdin/stdout data in messages, and provides another channel for raw
+message passing.
+
+It is also convenient to work transparently over SSH. The SSH client
+provides stdout and stderr by default, and Typos uses the SSH
+protocol's channel multiplexing feature to securely forward the raw
+message-passing channel.
+
+** Communication Pipeline
+
+- browser
+  - reads and writes messages
+
+- service
+  - proxies WebSocket messages over stdio
+  - spawns a controlling application process
+
+- shell
+  - spawns a child process
+  - wraps the child's stdin, stdout, and stderr in messages
+  - creates a Unix domain socket in the user's home directory for
+    sending and receiving raw messages
+
+- ssh connection to a remote host
+  - the Typos shell on the remote host creates a Unix domain socket
+    that proxies the service-local socket.
+
+* Development
+
+A hello-world command-line application, written in Clojure:
+
+    require 'typos'
+
+    typos.send({:type => :eval, :eval => "document.add(\"<h1>Hi there</h1>\")"});
+
+* Protocol
+
+There are two layers of protocols: message passing, which connects
+native applications to the browser, and the Typos shell's protocol,
+which defines a specific format for those messages. The Typos shell
+layer is easily extensible, but applications are also free to redefine
+it altogether.
+
+** Message Passing
+
+- network byte-order unsigned long: length
+- byte array of the given length
+  - interpreted as a UTF-8 encoded string
+
+** Typos Shell
+
+Messages are interpreted as JSON, with the following predefined
+messages:
+
+- Event, browser to host
+
+    {type: "event", ... }
+
+- Keystrokes, browser to host
+
+    {type: "keystrokes", data: ""}
+
+- Host data, host to browser
+
+    {type: "host_data", source: "stdin", data: ""}
+
+- Eval, host to browser
+
+    {type: "eval", js: ""}
+
+Host applications can define their own messages that will be handled
+by their own code in the browser.
+
+* Security
+
+Since it provides a command-line user experience, Typos should also
+provide the same security guarantees that a terminal emulator
+provides. Running in a browser, communicating over TCP means that the
+service must provide web-based authentication, and since it runs
+content from third-party servers, i.e. remote hosts that you SSH into,
+it must protect itself from malicious code on those servers.
+
+All web applications must perform authentication over a network port.
+Even if the server is only listening on localhost, other users on the
+system could open a connection to the port and run processes as
+another user. Typos uses a shared secret, similar to key-based
+authorization in X.
+
+The browser to web server communication is only over TCP for
+convenience, to allow this project to be written using standard
+components. Since the WebSocket communcaiton is not really intended to
+be used over a network, no support is provided for HTTPS or asymmetric
+key-based authorization. If such support were provided, users might
+come to the mistaken conclusion that it was free of vulnerabilities.
+(Rather than allow users to rely on an untested lock, I am forcing
+them to leave this gate wide open and rely on SSH.) It would be
+possible to write another transport mechanism that did not communicate
+over TCP, and therefore did not require authorization.
+
+Unlike a terminal emulator, a browser-based client allows remote hosts
+to inject malicious JavaScript that remains resident after the
+connection has been closed. This violates the expectation that remote
+hosts can only affect the window while they are connected. To restore
+this guarantee, remote connections should be run in a sandboxed
+iframe. Until this vulnerability is addressed, please treat this
+project as an insecure prototype.
+
+* Motivation
+
+Looking at nicely formatted code in a monospaced font is beautiful,
+but looking at unformatted log lines in a monospaced font is the
+visual equivalent of walking over broken glass. Once I realized how
+squint-inducing a lot of the text I was looking at was and started
+down the path of changing it, I wanted everything to be typeset in a
+proportional font.
+
+Here is an ordered list of my preferred UI development tools:
+
+- HTML and Javascript
+- Swing
+- Curses
+
+I wanted to be able to write a tool like `ls` using HTML typeography
+instead of calculating the layout myself.
+
+I love HTML+JS much more than Swing based on my particular set of
+experiences. I would like to add the caveat that I would rate myself
+as an out-of-date Swing developer and a below-average web developer.
+Typeographical flow does what I want most of the time, whereas
+something like GroupLayout seems too low-level, requiring a WYSIWYG
+editor to be used efficiently.
+
+HTML documents are composed of selectable, incrementally-searchable,
+serializable text, which is a powerful abstraction. It is one layer
+above a grid of character cells.
+
+I wanted general-purpose graphics and typesetting in my command-line
+sessions.
+
+I was inspired by several similar projects:
+
+- Python notebook
+- that thing
+- that other thing
+
+* License
+
+A BSD-style license in LICENSE.
