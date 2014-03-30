@@ -8,7 +8,7 @@ Typos is an attempt to combine the good parts of terminal application
 development and web development into a graphical command line hosted
 in the browser.
 
-Instead of sending ASCII escape codes, controlling applications send
+Instead of sending ANSI escape codes, controlling applications send
 messages to the browser. Browsers offer several advantages over
 terminal emulators for command-line developers:
 
@@ -37,124 +37,98 @@ RDP or X. It specifically tries to replicate a command-line-like style
 of interaction, whereas graphical desktop protocols are for
 single-application, single-process windows.
 
-A terminal emulator. No attempt has been made to handle ASCII escape
+A terminal emulator. No attempt has been made to handle ANSI escape
 codes. Why use `^[1234;666;12m` when you can use
 `.foo {background-color: blue}`? Typos can host web-based terminal
 emulators, however.
 
+* Hello Typos
+
+A hello-world command-line application, written in Ruby:
+
+#+BEGIN_SRC ruby
+    require 'typos'
+
+    Typos.send("document.write(\"<h1>Hi there</h1>\")");
+#+END_SRC
 
 * Requirements
 
-Should run on most versions of Linux, OS X, and Windows. Requires Java 1.6 or higher.
+Should run on most versions of Linux, OS X, and Windows. Requires Java
+1.6 or higher.
 
 * How it works
 
-An intermediary service provides messages passing between the browser
-and host applications via WebSockets. This service runs as the current
-user, not a daemon, and executes processes on behalf of that user.
+There are two parts of the architecture: middleware that lets local
+applications connect to browser windows over WebSockets, and then a
+shell process that uses this middleware to provide a simple
+command-line programming environment for child applications.
 
-Since most command-line applications expect stdin and stdout to be
-text streams, it is convenient to restore that behavior by
-default and pass messages over a different channel. This is the role
-that the Typos-stdio-multiplexer fills; it spawns a child, wraps its
-stdin/stdout data in messages, and provides another channel for raw
-message passing.
+The middleware is a service that simplifies connecting to a browser.
+It abstracts away details of speaking HTTP and the WebSocket protocol,
+and exposes a simpler, more secure protocol that consists of framed
+messages over stdio. Typos clients connect over one port, HTTP clients
+connect over another, and the service proxies messages between them.
+Communication is only established if both ends of the connection know
+a shared secret, distributed by whatever process initiated the
+creation of a new Typos-connected browser window.
 
-It is also convenient to work transparently over SSH. The SSH client
-provides stdout and stderr by default, and Typos uses the SSH
-protocol's channel multiplexing feature to securely forward the raw
-message-passing channel.
+The shell environment provides the HTML and JavaScript that
+command-line applications depend on. It also handles the problem of
+mixed-use stdio. Since most applications expect stdin and stdout to be
+text streams, and libraries can unexpectedly write plain text to these
+streams, it would be safe and convenient to restore that behavior by
+default and pass messages over a different channel. Therefore, the
+shell wraps all stdio bytes in messages, and then listens for raw
+messages on yet another socket on a random port, protected by yet
+another shared secret.
 
-** Communication Pipeline
+Typos works seamlessly over SSH, even the mixed-use-stdio gyrations
+that the shell goes through. Since the shell is running on the remote
+side of the connection, and it speaks framed messages over stdio, all
+the client side of the connection has to do is forward the messages to
+the raw message channel.
 
-- browser
-  - reads and writes messages
+Although the middleware is currently a service, it could easily be
+packaged as a shared library instead.
 
-- service
-  - proxies WebSocket messages over stdio
-  - spawns a controlling application process
+** Typos Shell Protocol
 
-- shell
-  - spawns a child process
-  - wraps the child's stdin, stdout, and stderr in messages
-  - creates a Unix domain socket in the user's home directory for
-    sending and receiving raw messages
+The Typos shell is responsible for providing the browser with the
+page's initial HTML and JavaScript, and for interpreting the WebSocket
+messages it receives. In the browser, messages are `eval()`ed.
 
-- ssh connection to a remote host
-  - the Typos shell on the remote host creates a Unix domain socket
-    that proxies the service-local socket.
+Stdio communication is sent so that it is delivered via a standard
+callback in the browser:
 
-* Development
-
-A hello-world command-line application, written in Clojure:
-
-    require 'typos'
-
-    typos.send({:type => :eval, :eval => "document.add(\"<h1>Hi there</h1>\")"});
-
-* Protocol
-
-There are two layers of protocols: message passing, which connects
-native applications to the browser, and the Typos shell's protocol,
-which defines a specific format for those messages. The Typos shell
-layer is easily extensible, but applications are also free to redefine
-it altogether.
-
-** Message Passing
-
-- network byte-order unsigned long: length
-- byte array of the given length
-  - interpreted as a UTF-8 encoded string
-
-** Typos Shell
-
-Messages are interpreted as JSON, with the following predefined
-messages:
-
-- Event, browser to host
-
-    {type: "event", ... }
-
-- Keystrokes, browser to host
-
-    {type: "keystrokes", data: ""}
-
-- Host data, host to browser
-
-    {type: "host_data", source: "stdin", data: ""}
-
-- Eval, host to browser
-
-    {type: "eval", js: ""}
-
-Host applications can define their own messages that will be handled
-by their own code in the browser.
+#+BEGIN_SRC javascript
+    Typos.handle_stdin("<stdin data>")
+#+END_SRC
 
 * Security
 
 Since it provides a command-line user experience, Typos should also
 provide the same security guarantees that a terminal emulator
-provides. Running in a browser, communicating over TCP means that the
-service must provide web-based authentication, and since it runs
-content from third-party servers, i.e. remote hosts that you SSH into,
-it must protect itself from malicious code on those servers.
+provides. Since the browser runs content from third-party servers,
+i.e. remote hosts that you SSH into, it must protect itself from
+malicious code on those servers. Communicating over TCP means that the
+service must protect access to the port from untrusted connections
 
 All web applications must perform authentication over a network port.
 Even if the server is only listening on localhost, other users on the
 system could open a connection to the port and run processes as
-another user. Typos uses a shared secret, similar to key-based
-authorization in X.
+another user. Typos uses a shared secret to authenticate users who
+access the port, similar to key-based authentication in X.
 
 The browser to web server communication is only over TCP for
-convenience, to allow this project to be written using standard
-components. Since the WebSocket communcaiton is not really intended to
-be used over a network, no support is provided for HTTPS or asymmetric
-key-based authorization. If such support were provided, users might
-come to the mistaken conclusion that it was free of vulnerabilities.
-(Rather than allow users to rely on an untested lock, I am forcing
-them to leave this gate wide open and rely on SSH.) It would be
-possible to write another transport mechanism that did not communicate
-over TCP, and therefore did not require authorization.
+convenience and portability. Since the WebSocket communication is not
+really intended to be used over a network, no support is provided for
+HTTPS. If such support were provided, users might come to the mistaken
+conclusion that it was free of vulnerabilities. (Rather than allow
+users to rely on an untested lock, I am forcing them to leave this
+gate wide open and rely on SSH.) It would be possible to write another
+transport mechanism that did not communicate over TCP, and therefore
+did not require authentication.
 
 Unlike a terminal emulator, a browser-based client allows remote hosts
 to inject malicious JavaScript that remains resident after the
@@ -170,12 +144,12 @@ Looking at nicely formatted code in a monospaced font is beautiful,
 but looking at unformatted log lines in a monospaced font is the
 visual equivalent of walking over broken glass. Once I realized how
 squint-inducing a lot of the text I was looking at was and started
-down the path of changing it, I wanted everything to be typeset in a
-proportional font.
+down the path of changing it, I began to want everything to be typeset
+in a proportional font.
 
 Here is an ordered list of my preferred UI development tools:
 
-- HTML and Javascript
+- HTML and JavaScript
 - Swing
 - Curses
 
@@ -184,23 +158,34 @@ instead of calculating the layout myself.
 
 I love HTML+JS much more than Swing based on my particular set of
 experiences. I would like to add the caveat that I would rate myself
-as an out-of-date Swing developer and a below-average web developer.
-Typeographical flow does what I want most of the time, whereas
-something like GroupLayout seems too low-level, requiring a WYSIWYG
-editor to be used efficiently.
+as an out-of-date Swing developer and an only-somewhat-experienced
+JavaScript developer. Typeographical flow does what I want most of the
+time, whereas something like GroupLayout seems too low-level,
+requiring a WYSIWYG editor to be used efficiently.
 
-HTML documents are composed of selectable, incrementally-searchable,
-serializable text, which is a powerful abstraction. It is one layer
-above a grid of character cells.
+HTML documents are composed of user-selectable,
+incrementally-searchable, serializable text, which is a powerful
+abstraction. It is one layer above the grid of character cells that a
+terminal provides.
 
 I wanted general-purpose graphics and typesetting in my command-line
 sessions.
 
 I was inspired by several similar projects:
 
-- Python notebook
-- that thing
-- that other thing
+- TermKit (http://acko.net/blog/on-termkit/)
+- the IPython Notebook (http://ipython.org/notebook.html)
+- XMLterm (http://www.xml.com/pub/a/2000/06/07/xmlterm/index.html)
+
+There are similar projects out there:
+
+- https://github.com/mitotic/graphterm
+
+Chrome Native messaging would be a good technology fit, but it would
+force users to run a specific browser, which would be a barrier to
+adoption:
+
+- http://developer.chrome.com/extensions/messaging#native-messaging
 
 * License
 
